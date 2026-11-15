@@ -1,0 +1,7 @@
+SYNTHETIC DEVELOPMENT FIXTURE - NOT A REAL PERSON
+Synthetic Candidate
+candidate@example.invalid
+Software Engineer
+Skills: Python, SQL, Docker, PostgreSQL
+2021 - 2024: Built a fictional inventory service for Example Company.
+This fixture is fabricated solely for local import and matching tests.

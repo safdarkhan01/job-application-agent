@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "job-application-agent"
+version = "0.1.0"
+description = "Local-first desktop job discovery and approval-based application assistant"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = ["pypdf>=5.1,<7"]
+
+[project.optional-dependencies]
+packaging = ["pyinstaller>=6.11,<7"]
+
+[project.gui-scripts]
+job-application-agent = "job_agent.desktop:main"
+
+[tool.setuptools.packages.find]
+include = ["job_agent*"]

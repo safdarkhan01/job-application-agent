@@ -1,0 +1,63 @@
+name: Desktop checks and Windows package
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - name: Install declared dependencies
+        run: python -m pip install ".[packaging]"
+      - name: Run offline unit and real desktop widget tests
+        run: python -m unittest discover -s tests -v
+      - name: Compile Python modules
+        run: python -m compileall -q job_agent tests run_desktop.py
+      - name: Build standalone Windows executable
+        run: python -m PyInstaller --noconfirm --clean packaging\windows.spec
+      - name: Launch the packaged app with isolated synthetic local data
+        shell: pwsh
+        run: |
+          $app = Start-Process -FilePath .\dist\JobApplicationAgent.exe -ArgumentList --smoke-test -PassThru
+          if (-not $app.WaitForExit(60000)) { Stop-Process -Id $app.Id; throw "Packaged smoke test timed out" }
+          if ($app.ExitCode -ne 0) { throw "Packaged smoke test exited with $($app.ExitCode)" }
+      - name: Bundle portable executable and documentation
+        shell: pwsh
+        run: |
+          Copy-Item README.md,LICENSE dist
+          Compress-Archive -Path dist\JobApplicationAgent.exe,dist\README.md,dist\LICENSE -DestinationPath JobApplicationAgent-windows-x64.zip
+          (Get-FileHash JobApplicationAgent-windows-x64.zip -Algorithm SHA256).Hash + '  JobApplicationAgent-windows-x64.zip' | Set-Content SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: JobApplicationAgent-windows-x64
+          path: |
+            JobApplicationAgent-windows-x64.zip
+            SHA256SUMS.txt
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: windows
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: JobApplicationAgent-windows-x64
+      - name: Publish tagged portable build
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: gh release create "$RELEASE_TAG" JobApplicationAgent-windows-x64.zip SHA256SUMS.txt --generate-notes --title "Job Application Agent $RELEASE_TAG"
