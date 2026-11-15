@@ -20,6 +20,20 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def listing_fields(source: str, published: object = "") -> dict:
+    if isinstance(published, (int, float)) and not isinstance(published, bool):
+        try:
+            published = datetime.fromtimestamp(published, timezone.utc).isoformat()
+        except (ValueError, OverflowError, OSError):
+            published = ""
+    checked = utc_now()
+    return {
+        "fetched_at": checked, "published_at": published if isinstance(published, str) else "",
+        "hiring_status": "open", "hiring_evidence": f"Listed in {source}'s public published-jobs feed; not an actively-hiring claim.",
+        "hiring_checked_at": checked,
+    }
+
+
 class FeedError(RuntimeError):
     pass
 
@@ -103,7 +117,7 @@ def parse_salary(text: str) -> Salary:
 @dataclass(frozen=True)
 class Capabilities:
     discovery: str
-    application: str = "Automatic submission: NOT IMPLEMENTED. Manual browser handoff only; no authorized submission connection."
+    application: str = "Portal auto-apply unavailable. Manual website; invited email is a separate, explicitly approved channel."
     automatic_submission: bool = False
 
 
@@ -115,7 +129,7 @@ class Discovery:
 
 @dataclass(frozen=True)
 class SubmissionResult:
-    outcome: str  # accepted, rejected, or unknown
+    outcome: str  # accepted, sent (mail-server acceptance only), rejected, needs_input, or unknown
     message: str
     receipt: str = ""
 
@@ -152,7 +166,8 @@ class Remotive:
                 jobs.append(Job(self.id, str(item["id"]), item["title"], item["company_name"],
                                 item.get("candidate_required_location") or "Remote", item["url"],
                                 description, True, extract_skills(description),
-                                parse_salary(item.get("salary") or ""), fetched_at=utc_now()))
+                                parse_salary(item.get("salary") or ""),
+                                **listing_fields(self.label, item.get("publication_date", ""))))
             except (KeyError, ValueError, TypeError, AttributeError):
                 rejected += 1
         return Discovery(jobs, rejected)
@@ -175,7 +190,8 @@ class Arbeitnow:
                 remote = item.get("remote") if isinstance(item.get("remote"), bool) else None
                 jobs.append(Job(self.id, str(item["slug"]), item["title"], item["company_name"],
                                 item.get("location") or "Unknown", item["url"], description,
-                                remote, extract_skills(description), fetched_at=utc_now()))
+                                remote, extract_skills(description),
+                                **listing_fields(self.label, item.get("created_at", ""))))
             except (KeyError, ValueError, TypeError, AttributeError):
                 rejected += 1
         return Discovery(jobs, rejected)
@@ -203,7 +219,8 @@ class Greenhouse:
                 description = plain_text(item.get("content") or "")
                 jobs.append(Job(self.id, str(item["id"]), item["title"], self.board,
                                 item.get("location", {}).get("name") or "Unknown", item["absolute_url"],
-                                description, None, extract_skills(description), fetched_at=utc_now()))
+                                description, None, extract_skills(description),
+                                **listing_fields(self.label, item.get("first_published", ""))))
             except (KeyError, ValueError, TypeError, AttributeError):
                 rejected += 1
         return Discovery(jobs, rejected)
@@ -267,7 +284,7 @@ class Lever:
                                            pay.get("interval"), "Lever structured salary range")
                 jobs.append(Job(self.id, str(item["id"]), item["text"], self.board, location,
                                 item["hostedUrl"], description, remote, extract_skills(description),
-                                salary, fetched_at=utc_now()))
+                                salary, **listing_fields(self.label)))
             except (KeyError, ValueError, TypeError, AttributeError):
                 rejected += 1
         return Discovery(jobs, rejected)
@@ -309,7 +326,7 @@ class Ashby:
                                                salary.evidence or "Ashby structured salary summary (multiple zones may apply)")
                 jobs.append(Job(self.id, item["jobUrl"], item["title"], self.board, "; ".join(locations),
                                 item["jobUrl"], description[:40_000], remote, extract_skills(description),
-                                salary, fetched_at=utc_now()))
+                                salary, **listing_fields(self.label, item.get("publishedAt", ""))))
             except (KeyError, ValueError, TypeError, AttributeError):
                 rejected += 1
         return Discovery(jobs, rejected)
@@ -333,10 +350,36 @@ class Jobicy:
                                            item.get("salaryPeriod"), "Jobicy structured salary")
                 jobs.append(Job(self.id, str(item["id"]), item["jobTitle"], item["companyName"],
                                 item.get("jobGeo") or "Remote", item["url"], description, True,
-                                extract_skills(description), salary, fetched_at=utc_now()))
+                                extract_skills(description), salary,
+                                **listing_fields(self.label, item.get("pubDate", ""))))
             except (KeyError, ValueError, TypeError, AttributeError):
                 rejected += 1
         return Discovery(jobs, rejected)
+
+    def check_status(self, ids: list[str]) -> dict[str, dict]:
+        if not ids or len(ids) > 100 or any(not re.fullmatch(r"[1-9]\d*", value) for value in ids):
+            raise ValueError("Check between 1 and 100 numeric Jobicy listing IDs.")
+        data = fetch_json("https://jobicy.com/api/jobs/status?ids=" + ",".join(dict.fromkeys(ids)))
+        if not isinstance(data, dict) or not isinstance(data.get("jobs"), list) or data.get("success") is False:
+            raise FeedError("Jobicy returned an unexpected listing-status response.")
+        checked_at = data.get("checkedAt") or utc_now()
+        try:
+            datetime.fromisoformat(checked_at.replace("Z", "+00:00"))
+        except (ValueError, AttributeError) as exc:
+            raise FeedError("Jobicy returned an invalid listing check timestamp.") from exc
+        results = {}
+        for item in data["jobs"]:
+            if not isinstance(item, dict):
+                raise FeedError("Jobicy returned a malformed listing-status record.")
+            key, status = str(item.get("id", "")), item.get("status")
+            if key not in ids or status not in {"active", "closed", "unknown"}:
+                raise FeedError("Jobicy returned an unrecognized listing-status value.")
+            results[key] = {"status": {"active": "open", "closed": "closed", "unknown": "unknown"}[status],
+                            "checked_at": checked_at,
+                            "evidence": f"Jobicy status endpoint reports {status}. This is listing availability, not application stage."}
+        if set(results) != set(ids):
+            raise FeedError("Jobicy omitted requested listing statuses; availability is unverified.")
+        return results
 
 
 def connectors(board: str = "", lever: str = "", ashby: str = "", lever_eu: str = "") -> dict[str, Connector]:

@@ -127,7 +127,7 @@ class MatchingTests(unittest.TestCase):
     def test_unknown_salary_is_not_a_meeting_salary(self):
         result = rank(job(), self.profile)
         self.assertEqual("unknown", result.compensation)
-        self.assertEqual(85, result.score)
+        self.assertEqual(70, result.score)
         self.assertFalse(result.eligible)
 
     def test_salary_ranges_and_currency(self):
@@ -154,7 +154,8 @@ class MatchingTests(unittest.TestCase):
         self.assertEqual("mismatch", result.role)
         profile = replace(self.profile, skills=["Java", "C"])
         result = rank(job(description="JavaScript development"), profile)
-        self.assertTrue(any("0/2" in reason for reason in result.reasons))
+        self.assertEqual([], result.matched_skills)
+        self.assertFalse(result.eligible)
 
     def test_invalid_pay_is_rejected(self):
         for value in (float("nan"), float("inf"), -1):

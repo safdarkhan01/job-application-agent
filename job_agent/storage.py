@@ -46,6 +46,19 @@ class Store:
                     id INTEGER PRIMARY KEY, application_id TEXT NOT NULL REFERENCES applications(id),
                     at TEXT NOT NULL, state TEXT NOT NULL, message TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS application_tracking (
+                    application_id TEXT PRIMARY KEY REFERENCES applications(id),
+                    stage TEXT NOT NULL, applied_at TEXT NOT NULL, portal TEXT NOT NULL,
+                    updated_at TEXT NOT NULL, provenance TEXT NOT NULL, evidence TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS tracking_events (
+                    id INTEGER PRIMARY KEY,
+                    application_id TEXT NOT NULL REFERENCES applications(id),
+                    at TEXT NOT NULL, stage TEXT NOT NULL, provenance TEXT NOT NULL, evidence TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS listing_checks (
+                    job_id TEXT PRIMARY KEY, data TEXT NOT NULL
+                );
             """)
         if os.name != "nt":
             self.database.chmod(0o600)

@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 
-from job_agent.connectors import Ashby, FeedError, Jobicy, Lever, connectors
+from job_agent.connectors import Arbeitnow, Ashby, FeedError, Greenhouse, Jobicy, Lever, Remotive, connectors
 
 
 class AdditionalConnectorTests(unittest.TestCase):
@@ -86,3 +86,19 @@ class AdditionalConnectorTests(unittest.TestCase):
             with self.subTest(config=config), self.assertRaises(ValueError):
                 connectors(**config)
         self.assertTrue(all(not source.capabilities.automatic_submission for source in sources.values()))
+
+    def test_publication_dates_are_not_replaced_by_retrieval_or_update_dates(self):
+        remotive = {"jobs": [{"id": 1, "title": "Engineer", "company_name": "Synthetic",
+                              "description": "Python", "url": "https://example.invalid/fixture",
+                              "publication_date": "2026-01-01T10:00:00"}]}
+        with patch("job_agent.connectors.fetch_json", return_value=remotive):
+            posting = Remotive().discover().jobs[0]
+        self.assertEqual("2026-01-01T10:00:00", posting.published_at)
+        self.assertEqual("open", posting.hiring_status)
+        self.assertNotEqual(posting.published_at, posting.fetched_at)
+        greenhouse = {"jobs": [{"id": 1, "title": "Engineer", "updated_at": "2026-11-16T10:00:00Z",
+                                "absolute_url": "https://example.invalid/gh", "content": "Python"}]}
+        with patch("job_agent.connectors.fetch_json", return_value=greenhouse):
+            posting = Greenhouse("synthetic").discover().jobs[0]
+        self.assertEqual("", posting.published_at)
+        self.assertEqual("open", posting.hiring_status)

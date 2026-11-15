@@ -59,6 +59,7 @@ class Salary:
     currency: str = ""
     period: str = "year"
     evidence: str = ""
+    basis: str = "unspecified"
 
     def validate(self) -> None:
         if self.period not in PERIODS:
@@ -70,6 +71,8 @@ class Salary:
             raise ValueError("Minimum compensation cannot exceed maximum.")
         if values and not re.fullmatch(r"[A-Z]{3}", self.currency):
             raise ValueError("Specify a three-letter currency such as USD, EUR, or INR.")
+        if self.basis not in {"base", "total", "unspecified"}:
+            raise ValueError("Compensation basis must be base, total, or unspecified.")
 
 
 @dataclass
@@ -85,6 +88,11 @@ class Profile:
     currency: str = "USD"
     period: str = "year"
     resume: dict = field(default_factory=dict)
+    minimum_skill_percent: int = 50
+    current_level: str = ""
+    include_higher: bool = True
+    prefer_recent: bool = True
+    recent_days: int = 14
 
     def validate(self) -> None:
         if self.remote not in {"any", "remote", "onsite"}:
@@ -92,6 +100,12 @@ class Profile:
         Salary(self.minimum_salary, currency=self.currency, period=self.period).validate()
         if self.email and not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", self.email):
             raise ValueError("Enter a valid email address.")
+        if not 1 <= self.minimum_skill_percent <= 100:
+            raise ValueError("Minimum skill overlap must be between 1 and 100 percent.")
+        if self.current_level not in {"", "intern", "entry", "junior", "mid", "senior", "lead", "staff", "principal", "manager", "director"}:
+            raise ValueError("Choose your current level, or leave it unspecified.")
+        if not 1 <= self.recent_days <= 90:
+            raise ValueError("Recent postings must mean between 1 and 90 days.")
 
 
 @dataclass
@@ -109,12 +123,20 @@ class Job:
     sources: list[str] = field(default_factory=list)
     fetched_at: str = ""
     aliases: list[str] = field(default_factory=list)
+    published_at: str = ""
+    hiring_status: str = "unknown"
+    hiring_evidence: str = ""
+    hiring_checked_at: str = ""
 
     def __post_init__(self) -> None:
         public_url(self.url)
         if not self.title.strip() or not self.company.strip():
             raise ValueError("A job must include a title and company.")
         self.salary.validate()
+        if self.hiring_status not in {"active", "open", "closed", "unknown"}:
+            raise ValueError("Unsupported hiring status.")
+        if self.hiring_status == "active" and not self.hiring_evidence.strip():
+            raise ValueError("An active-hiring claim requires explicit source evidence.")
         if not self.sources:
             self.sources = [self.source]
 

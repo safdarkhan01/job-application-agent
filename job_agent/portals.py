@@ -7,7 +7,7 @@ class Portal:
     access: str
     setup: str
     evidence_url: str
-    submission_access: str = "Automatic submission is not implemented; no authorized submission connection."
+    submission_access: str = "Portal automatic submission is unavailable; no authorized account connection."
     submission_reference_url: str = ""
 
 
@@ -43,4 +43,12 @@ PORTALS = (
            "https://www.glassdoor.com/about/terms/"),
     Portal("Wellfound", "Manual only / not connected", "Account-based candidate/employer service. No authorized public discovery/submission API configured; paste details/open in your browser.",
            "https://wellfound.com/terms"),
+    Portal("SmartRecruiters", "Not connected / employer access", "No applicant account integration. Reviewed application API requires customer/partner access.",
+           "https://developers.smartrecruiters.com/docs/authentication",
+           "Application POST requires X-SmartToken. No applicant-account permission is configured; undocumented form endpoints are not used.",
+           "https://developers.smartrecruiters.com/docs/post-an-application"),
+    Portal("Recruitee", "Not connected / employer access", "No account integration. Careers API token belongs to a company account.",
+           "https://support.recruitee.com/en/articles/1066282-api-documentation",
+           "Careers API documents company-account token access, including candidate POST; mandatory token enforcement by 10 February 2027 is not permission to exploit a legacy unauthenticated route.",
+           "https://docs.recruitee.com/reference/authentication-1.md"),
 )
