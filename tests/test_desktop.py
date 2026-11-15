@@ -51,12 +51,13 @@ class DesktopSmokeTests(unittest.TestCase):
         dialogs[0].destroy()
         self.ui.applications.approve(application_id, digest(self.ui.applications.get(application_id)["payload"]))
         with patch("job_agent.desktop.messagebox.showinfo"), patch("job_agent.desktop.webbrowser.open", return_value=True) as browser:
-            self.ui._dispatch()
+            self.ui.handoff_button.invoke()
         self.assertEqual(1, browser.call_count)
         self.assertEqual("manual_handoff", self.ui.applications.get(application_id)["state"])
         with patch("job_agent.desktop.messagebox.askyesno", return_value=True):
             self.ui._confirm_manual()
         self.assertEqual("user-confirmed-manual", self.ui.applications.get(application_id)["receipt"])
+        self.assertIn("user reported", self.ui.application_tree.item(application_id, "values")[2])
 
     def test_unsaved_application_edit_blocks_previously_approved_dispatch(self):
         self.ui.profile.name = "Synthetic Candidate"

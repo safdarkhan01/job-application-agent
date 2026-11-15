@@ -8,7 +8,7 @@ from unittest.mock import patch
 import zipfile
 
 from job_agent.connectors import (
-    Arbeitnow, Capabilities, Discovery, FeedError, Greenhouse, Remotive, SubmissionResult, parse_salary,
+    Arbeitnow, Capabilities, Discovery, FeedError, Greenhouse, Remotive, SubmissionResult, connectors, parse_salary,
 )
 from job_agent.matching import rank
 from job_agent.models import Job, Profile, Salary, canonical_url, deduplicate, digest, public_url
@@ -247,6 +247,24 @@ class ApplicationTests(StorageCase):
         self.assertEqual("user-confirmed-manual", saved["receipt"])
         with self.assertRaises(ValueError):
             self.edit(application_id, cover_letter="Too late")
+
+    def test_approval_on_every_production_connector_only_creates_a_manual_handoff(self):
+        sources = connectors("synthetic-gh", lever="synthetic-lever", ashby="synthetic-ashby",
+                             lever_eu="synthetic-eu")
+        self.apps = Applications(self.store, sources)
+        with patch("urllib.request.OpenerDirector.open", side_effect=AssertionError("No network allowed")) as network:
+            for index, source_id in enumerate(sources):
+                with self.subTest(source=source_id):
+                    application_id = self.prepare(job(
+                        source=source_id, company=f"Synthetic Company {index}",
+                        source_id=f"synthetic-posting-{index}", url=f"https://example.invalid/jobs/{index}"))
+                    self.approve(application_id)
+                    self.assertEqual("approved", self.apps.get(application_id)["state"])
+                    self.assertEqual("manual_handoff", self.apps.dispatch(application_id)[0])
+                    self.assertEqual("", self.apps.get(application_id)["receipt"])
+                    with self.assertRaisesRegex(ValueError, "approved"):
+                        self.apps.dispatch(application_id)
+            network.assert_not_called()
 
     def test_answers_require_an_object_of_text(self):
         application_id = self.prepare()

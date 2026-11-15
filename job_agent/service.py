@@ -180,7 +180,8 @@ class Applications:
             self._validate_payload(payload)
             connector = self.connectors.get(current["job"].source)
             if not connector or not connector.capabilities.automatic_submission:
-                message = ("Manual handoff: no supported submission API. Open the employer page, attach the approved "
+                message = ("Manual handoff only: automatic submission is NOT IMPLEMENTED for this source. "
+                           "Open the employer page, attach the approved "
                            "résumé, copy the reviewed content and answer mandatory questions. Login/CAPTCHA must be "
                            "completed by you. Nothing has been submitted by this app.")
                 self._state(db, application_id, "manual_handoff", message)

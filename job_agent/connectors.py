@@ -103,7 +103,7 @@ def parse_salary(text: str) -> Salary:
 @dataclass(frozen=True)
 class Capabilities:
     discovery: str
-    application: str = "Manual browser handoff only; no submission API access."
+    application: str = "Automatic submission: NOT IMPLEMENTED. Manual browser handoff only; no authorized submission connection."
     automatic_submission: bool = False
 
 

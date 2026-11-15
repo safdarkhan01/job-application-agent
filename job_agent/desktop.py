@@ -57,10 +57,13 @@ class Desktop:
         style.configure("TButton", padding=(10, 6))
         style.configure("Header.TLabel", font=("Segoe UI", 20, "bold"))
         style.configure("Subhead.TLabel", font=("Segoe UI", 11, "bold"))
+        style.configure("Notice.TLabel", foreground="#92400e", font=("Segoe UI", 10, "bold"))
         header = ttk.Frame(root, padding=(18, 12))
         header.pack(fill="x")
         ttk.Label(header, text="Job Application Agent", style="Header.TLabel").pack(anchor="w")
-        ttk.Label(header, text="Discover real postings. Review evidence. Approve an exact application. No hidden submissions.").pack(anchor="w")
+        ttk.Label(header, text="Discover real postings. Prepare and review locally. Submit manually on the employer website.").pack(anchor="w")
+        ttk.Label(header, text="Automatic submission: NOT IMPLEMENTED. Supported APIs provide discovery only or require "
+                  "employer-owned submission access.", style="Notice.TLabel", wraplength=1100).pack(anchor="w", pady=(5, 0))
         self.tabs = ttk.Notebook(root)
         self.tabs.pack(fill="both", expand=True, padx=14)
         self.profile_tab = ttk.Frame(self.tabs, padding=12)
@@ -68,7 +71,7 @@ class Desktop:
         self.review_tab = ttk.Frame(self.tabs, padding=12)
         self.tabs.add(self.profile_tab, text="1  Resume & preferences")
         self.tabs.add(self.discovery_tab, text="2  Discover & match")
-        self.tabs.add(self.review_tab, text="3  Review & applications")
+        self.tabs.add(self.review_tab, text="3  Prepare & manual apply")
         self.status = tk.StringVar(value="Local data: " + str(store.directory))
         ttk.Label(root, textvariable=self.status, padding=(16, 8), wraplength=1150).pack(fill="x")
         self._profile_ui()
@@ -265,8 +268,10 @@ class Desktop:
                               if source.label.startswith(portal.name)]
                 text = (f"{portal.name}: {portal.access}\n{portal.setup}\n"
                         f"Configured discovery: {', '.join(configured) or 'None'}\n"
-                        "Application: manual handoff only; no automatic submission.\n"
-                        f"Reference: {portal.evidence_url}\n"
+                        "Automatic submission: NOT IMPLEMENTED.\n"
+                        f"Submission access blocker: {portal.submission_access}\n"
+                        f"Discovery reference: {portal.evidence_url}\n"
+                        f"Submission reference: {portal.submission_reference_url or portal.evidence_url}\n"
                         "References were assessed during implementation; access/terms can change.")
                 self._replace(details, text, True)
         tree.bind("<<TreeviewSelect>>", show)
@@ -274,6 +279,9 @@ class Desktop:
         actions.pack(fill="x")
         ttk.Button(actions, text="Open official reference",
                    command=lambda: self.action(lambda: self._open_url(selected().evidence_url) if selected() else None)).pack(side="left")
+        ttk.Button(actions, text="Open submission reference",
+                   command=lambda: self.action(lambda: self._open_url(
+                       selected().submission_reference_url or selected().evidence_url) if selected() else None)).pack(side="left", padx=6)
         ttk.Button(actions, text="Configure employer boards", command=self._board_dialog).pack(side="left", padx=6)
         ttk.Button(actions, text="Import posting manually", command=self._manual_dialog).pack(side="left")
         tree.selection_set("0")
@@ -489,13 +497,14 @@ class Desktop:
         row.pack(fill="x")
         ttk.Button(row, text="Save revision (invalidates approval)", command=lambda: self.action(self._save_application)).pack(side="left")
         ttk.Button(row, text="Use current profile / resume", command=lambda: self.action(lambda: self._save_application(True))).pack(side="left", padx=6)
-        ttk.Button(row, text="Review & approve", command=lambda: self.action(self._approve)).pack(side="left")
+        ttk.Button(row, text="Review & approve local payload", command=lambda: self.action(self._approve)).pack(side="left")
         row2 = ttk.Frame(self.review_tab)
         row2.pack(fill="x", pady=(6, 0))
-        ttk.Button(row2, text="Continue approved application", command=lambda: self.action(self._dispatch)).pack(side="left")
+        self.handoff_button = ttk.Button(row2, text="Open site for manual submission", command=lambda: self.action(self._dispatch))
+        self.handoff_button.pack(side="left")
         ttk.Button(row2, text="I completed the manual application", command=lambda: self.action(self._confirm_manual)).pack(side="left", padx=6)
         ttk.Button(row2, text="Resolve uncertain outcome", command=lambda: self.action(self._reconcile)).pack(side="left")
-        ttk.Label(self.review_tab, text="Current connectors never auto-submit. Approval is not a submission. "
+        ttk.Label(self.review_tab, text="Automatic submission is NOT IMPLEMENTED. Approval only records the local intended payload. "
                   "Manual completion is recorded only on your confirmation; uncertain attempts are never retried automatically.",
                   wraplength=1100).pack(anchor="w", pady=(8, 0))
 
@@ -504,8 +513,12 @@ class Desktop:
         self.application_tree.delete(*self.application_tree.get_children())
         for application in self.applications.list():
             job = application["job"]
+            state = {"prepared": "prepared (local only)", "approved": "approved (local only)",
+                     "manual_handoff": "manual handoff; not sent"}.get(application["state"], application["state"])
+            if application["state"] == "submitted" and application["receipt"] == "user-confirmed-manual":
+                state = "submitted (user reported)"
             self.application_tree.insert("", "end", iid=application["id"],
-                                         values=(job.title, job.company, application["state"]))
+                                         values=(job.title, job.company, state))
         if selected and self.application_tree.exists(selected):
             self.application_tree.selection_set(selected)
 
@@ -552,12 +565,13 @@ class Desktop:
         application_id = self._application_id()
         reviewed_digest = digest(payload)
         dialog = tk.Toplevel(self.root)
-        dialog.title("Review the exact application before approval")
+        dialog.title("Review intended manual application - nothing will be sent")
         dialog.geometry("900x700")
         frame = ttk.Frame(dialog, padding=12)
         frame.pack(fill="both", expand=True)
-        ttk.Label(frame, text="Nothing is submitted by approval. Review all candidate facts, answers, letter, target URL, "
-                  "and attachment below. Current connectors require manual completion.", wraplength=850).pack(anchor="w")
+        ttk.Label(frame, text="Automatic submission is NOT IMPLEMENTED. Approval only saves your consent to this local intended "
+                  "payload. Review all facts, answers, letter, target URL, and attachment; then complete submission yourself "
+                  "on the employer website.", wraplength=850).pack(anchor="w")
         content = self._text(frame, 20)
         self._replace(content, json.dumps(payload, indent=2, ensure_ascii=False), True)
         ttk.Button(frame, text="Open local resume for review",
@@ -569,7 +583,7 @@ class Desktop:
             self._show_applications()
             self._load_application()
             self.status.set("Exact application approved. Nothing submitted. Continue to the manual handoff.")
-        ttk.Button(frame, text="I reviewed and approve this exact application",
+        ttk.Button(frame, text="I approve this local payload for manual application",
                    command=lambda: self.action(approve)).pack(side="left")
         ttk.Button(frame, text="Cancel", command=dialog.destroy).pack(side="right")
         dialog.transient(self.root)
